@@ -46,32 +46,34 @@ public class SecureVaultFactory {
     public static Optional<SecureVault> getSecureVault(Path secureVaultConfigPath) throws SecureVaultException {
         MasterKeyReader masterKeyReader;
         SecretRepository secretRepository;
-        SecureVaultConfiguration secureVaultConfiguration = SecureVaultUtils.getSecureVaultConfig(secureVaultConfigPath)
-                .orElseThrow(() -> new SecureVaultException("Error occurred when obtaining secure vault " +
-                        "configuration."));
+        SecureVault secureVault = null;
+        Optional<SecureVaultConfiguration> secConfig = SecureVaultUtils.getSecureVaultConfig(secureVaultConfigPath);
+        if (secConfig.isPresent()) {
+            SecureVaultConfiguration secureVaultConfiguration = secConfig.get();
+            if (SecureVaultUtils.isOSGIEnv()) {
+                // Get master key reader
+                masterKeyReader = SecureVaultDataHolder.getInstance().getMasterKeyReader().orElseThrow(
+                        () -> new SecureVaultException("Master key reader type is not set"));
+                // Get secret repository
+                secretRepository = SecureVaultDataHolder.getInstance().getSecretRepository().orElseThrow(
+                        () -> new SecureVaultException("Secret repository type is not set"));
+            } else {
+                // Instantiate master key reader.
+                String masterKeyReaderType = secureVaultConfiguration.getMasterKeyReaderConfig().getType().orElseThrow(
+                        () -> new SecureVaultException("Master key reader type is not set"));
+                masterKeyReader = createInstance(masterKeyReaderType, MasterKeyReader.class);
+                SecureVaultDataHolder.getInstance().setMasterKeyReader(masterKeyReader);
 
-        if (SecureVaultUtils.isOSGIEnv()) {
-            // Get master key reader
-            masterKeyReader = SecureVaultDataHolder.getInstance().getMasterKeyReader()
-                    .orElseThrow(() -> new SecureVaultException("Master key reader type is not set"));
-            // Get secret repository
-            secretRepository = SecureVaultDataHolder.getInstance().getSecretRepository()
-                    .orElseThrow(() -> new SecureVaultException("Secret repository type is not set"));
-        } else {
-            // Instantiate master key reader.
-            String masterKeyReaderType = secureVaultConfiguration.getMasterKeyReaderConfig().getType()
-                    .orElseThrow(() -> new SecureVaultException("Master key reader type is not set"));
-            masterKeyReader = createInstance(masterKeyReaderType, MasterKeyReader.class);
-            SecureVaultDataHolder.getInstance().setMasterKeyReader(masterKeyReader);
-
-            // Instantiate secrete repository
-            String secretRepositoryType = secureVaultConfiguration.getSecretRepositoryConfig().getType()
-                    .orElseThrow(() -> new SecureVaultException("Secret repository type is not set"));
-            secretRepository = createInstance(secretRepositoryType, SecretRepository.class);
-            SecureVaultDataHolder.getInstance().setSecretRepository(secretRepository);
+                // Instantiate secrete repository
+                String secretRepositoryType = secureVaultConfiguration.getSecretRepositoryConfig().getType()
+                                                                      .orElseThrow(() -> new SecureVaultException(
+                                                                              "Secret repository type is not set"));
+                secretRepository = createInstance(secretRepositoryType, SecretRepository.class);
+                SecureVaultDataHolder.getInstance().setSecretRepository(secretRepository);
+            }
+            secureVault = getSecureVault(secureVaultConfiguration, masterKeyReader, secretRepository);
+            logger.debug("Secure Vault initialized successfully");
         }
-        SecureVault secureVault = getSecureVault(secureVaultConfiguration, masterKeyReader, secretRepository);
-        logger.debug("Secure Vault initialized successfully");
         return Optional.ofNullable(secureVault);
     }
 

@@ -86,12 +86,14 @@ public class SecureVaultUtils {
                     .toString());
         }
         String resolvedFileContent = SecureVaultUtils.resolveFileToString(secureVaultConfigPath);
-        Yaml yaml = new Yaml(new CustomClassLoaderConstructor(SecureVaultConfiguration.class,
-                SecureVaultConfiguration.class.getClassLoader()));
-        yaml.setBeanAccess(BeanAccess.FIELD);
-        SecureVaultConfiguration secureVaultConfiguration = yaml.loadAs(resolvedFileContent, SecureVaultConfiguration
-                .class);
-        logger.debug("Secure vault configurations loaded successfully.");
+        SecureVaultConfiguration secureVaultConfiguration = null;
+        if (!resolvedFileContent.isEmpty()) {
+            Yaml yaml = new Yaml(new CustomClassLoaderConstructor(SecureVaultConfiguration.class,
+                                                                  SecureVaultConfiguration.class.getClassLoader()));
+            yaml.setBeanAccess(BeanAccess.FIELD);
+            secureVaultConfiguration = yaml.loadAs(resolvedFileContent, SecureVaultConfiguration.class);
+            logger.debug("Secure vault configurations loaded successfully.");
+        }
         return Optional.ofNullable(secureVaultConfiguration);
     }
 
@@ -241,8 +243,13 @@ public class SecureVaultUtils {
         Map<String, Object> configurationMap = (Map<String, Object>) yaml.loadAs(configFileContent, Map.class);
 
         if (configurationMap == null || configurationMap.isEmpty() ||
-                configurationMap.get(SecureVaultConstants.SECUREVAULT_NAMESPACE) == null) {
-            throw new SecureVaultException("Error initializing securevault, secure configuration does not exist");
+            configurationMap.get(SecureVaultConstants.SECUREVAULT_NAMESPACE) == null) {
+            if (SecureVaultUtils.isOSGIEnv()) {
+                throw new SecureVaultException("Error initializing securevault, secure configuration does not exist");
+            } else {
+                logger.debug("Secvault configuration does not exist. Secvault will be disabled.");
+                return "";
+            }
         }
         return yaml.dumpAsMap(configurationMap.get(SecureVaultConstants.SECUREVAULT_NAMESPACE));
     }
